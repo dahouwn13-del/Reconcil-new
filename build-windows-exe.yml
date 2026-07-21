@@ -1,4 +1,4 @@
-name: Build CIEL Windows EXE
+name: .github/workflows/build-windows-exe.yml
 on:
   workflow_dispatch:
   push:
