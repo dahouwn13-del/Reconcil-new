@@ -1,13 +1,11 @@
-# CIEL Reconciliation
+# CIEL Reconciliation 5.1
 
-Version 5.0 adds a reusable in-app logging framework for Booking.com reconciliation.
+## Changes
+- Restored the full reconciliation results grid.
+- Work Log now opens in a separate non-modal window.
+- Fixed the Clear Filter button layout.
+- Added a responsive status bar and visible version number.
+- Preserved the Booking.com parser, matching engine, transliteration, and Excel export.
 
-## Work Log
-- Opens inside the Booking.com screen.
-- Updates live while files are read and reservations are matched.
-- Uses INFO, SUCCESS, WARNING and ERROR levels.
-- Shows matching progress and percentage.
-- Includes reservation number and guest name where available.
-- Supports Copy log and Clear log.
-
-The application starts with two choices: Booking.com and Expedia. Expedia remains a separate module for future Expedia-specific file mapping.
+## Build
+GitHub Actions publishes the self-contained Windows x64 executable.

@@ -2,7 +2,6 @@ using System.Drawing.Drawing2D;
 using CIEL.Reconciliation.Models;
 using CIEL.Reconciliation.Services;
 using CIEL.Reconciliation.Logging;
-using System.Text.RegularExpressions;
 
 namespace CIEL.Reconciliation;
 
@@ -12,36 +11,12 @@ public sealed class MainForm : Form
     private readonly TextBox _operaPath = CreatePathBox();
     private readonly Button _run = CreatePrimaryButton("RUN RECONCILIATION");
     private readonly Button _export = CreateSecondaryButton("EXPORT TO EXCEL");
-    private readonly Button _toggleLog = CreateSecondaryButton("SHOW WORK LOG ▼");
-    private readonly RichTextBox _workLog = new()
-    {
-        Dock = DockStyle.Fill,
-        ReadOnly = true,
-        BorderStyle = BorderStyle.None,
-        BackColor = Color.FromArgb(15, 23, 42),
-        ForeColor = Color.FromArgb(226, 232, 240),
-        Font = new Font("Consolas", 9),
-        DetectUrls = false
-    };
-    private readonly Label _logStatus = new()
-    {
-        Text = "Ready",
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleLeft,
-        ForeColor = Color.FromArgb(51, 65, 85),
-        Font = new Font("Segoe UI Semibold", 9, FontStyle.Bold)
-    };
-    private readonly ProgressBar _logProgress = new()
-    {
-        Dock = DockStyle.Fill,
-        Minimum = 0,
-        Maximum = 100,
-        Value = 0,
-        Style = ProgressBarStyle.Continuous
-    };
-    private readonly Panel _logPanel = new() { Dock = DockStyle.Fill, Visible = false };
+    private readonly Button _toggleLog = CreateSecondaryButton("WORK LOG");
+    private LogForm? _logForm;
     private TableLayoutPanel? _root;
-    private bool _logVisible;
+    private readonly ToolStripStatusLabel _statusSummary = new("Ready");
+    private readonly ToolStripStatusLabel _statusSpacer = new() { Spring = true };
+    private readonly ToolStripStatusLabel _versionLabel = new("Version 5.1.0");
     private readonly Label _status = new()
     {
         Text = "Select the Booking.com Excel file and Opera Arrivals: Detailed PDF.",
@@ -94,14 +69,11 @@ public sealed class MainForm : Form
         AllowDrop = true;
 
         ConfigureGrid();
-        Logger.EntryWritten += OnLogEntryWritten;
-        FormClosed += (_, _) => Logger.EntryWritten -= OnLogEntryWritten;
-
         _root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(28, 22, 28, 24),
-            RowCount = 7,
+            RowCount = 6,
             ColumnCount = 1,
             BackColor = BackColor
         };
@@ -111,7 +83,6 @@ public sealed class MainForm : Form
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
         Controls.Add(_root);
 
         _root.Controls.Add(BuildHeader(), 0, 0);
@@ -120,11 +91,11 @@ public sealed class MainForm : Form
         _root.Controls.Add(BuildStatusPanel(), 0, 3);
         _root.Controls.Add(BuildSearchPanel(), 0, 4);
         _root.Controls.Add(BuildGridPanel(), 0, 5);
-        _root.Controls.Add(BuildLogPanel(), 0, 6);
+        Controls.Add(BuildStatusStrip());
 
         _run.Click += async (_, _) => await RunAsync();
         _export.Click += async (_, _) => await ExportAsync();
-        _toggleLog.Click += (_, _) => ToggleWorkLog();
+        _toggleLog.Click += (_, _) => ShowWorkLog();
         _search.TextChanged += (_, _) => ApplyFilter();
         DragEnter += OnDragEnter;
         DragDrop += OnDragDrop;
@@ -296,11 +267,12 @@ public sealed class MainForm : Form
         var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(0, 4, 0, 4) };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         table.Controls.Add(new Label { Text = "Search", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10), ForeColor = Color.FromArgb(51, 65, 85) }, 0, 0);
         table.Controls.Add(_search, 1, 0);
         var clear = CreateBrowseButton();
-        clear.Text = "Clear filter";
+        clear.Text = "CLEAR FILTER";
+        clear.Margin = new Padding(10, 2, 0, 2);
         clear.Click += (_, _) => { _activeFilter = "All"; _search.Clear(); UpdateCards(_bookingCount, _operaCount, _results); ApplyFilter(); };
         table.Controls.Add(clear, 2, 0);
         return table;
@@ -314,120 +286,37 @@ public sealed class MainForm : Form
     }
 
 
-    private Control BuildLogPanel()
+    private StatusStrip BuildStatusStrip()
     {
-        var container = new RoundedPanel
+        var strip = new StatusStrip
         {
-            Dock = DockStyle.Fill,
+            SizingGrip = false,
             BackColor = Color.White,
-            CornerRadius = 12,
-            Padding = new Padding(1),
-            Margin = new Padding(0, 8, 0, 0)
+            ForeColor = Color.FromArgb(71, 85, 105),
+            Dock = DockStyle.Bottom
         };
-
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, BackColor = Color.FromArgb(241, 245, 249) };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        header.Controls.Add(new Label
-        {
-            Text = "WORK LOG — LIVE ENGINE ACTIVITY",
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(12, 0, 0, 0),
-            Font = new Font("Segoe UI Semibold", 9, FontStyle.Bold),
-            ForeColor = Color.FromArgb(51, 65, 85)
-        }, 0, 0);
-
-        var copy = CreateBrowseButton();
-        copy.Text = "Copy log";
-        copy.Margin = new Padding(4);
-        copy.Click += (_, _) =>
-        {
-            if (!string.IsNullOrWhiteSpace(_workLog.Text)) Clipboard.SetText(_workLog.Text);
-        };
-        header.Controls.Add(copy, 1, 0);
-
-        var clear = CreateBrowseButton();
-        clear.Text = "Clear log";
-        clear.Margin = new Padding(4);
-        clear.Click += (_, _) => { Logger.Clear(); _workLog.Clear(); _logProgress.Value = 0; _logStatus.Text = "Ready"; };
-        header.Controls.Add(clear, 2, 0);
-
-        var progressRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10, 6, 10, 5), BackColor = Color.White };
-        progressRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 280));
-        progressRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        progressRow.Controls.Add(_logStatus, 0, 0);
-        progressRow.Controls.Add(_logProgress, 1, 0);
-
-        layout.Controls.Add(header, 0, 0);
-        layout.Controls.Add(progressRow, 0, 1);
-        layout.Controls.Add(_workLog, 0, 2);
-        container.Controls.Add(layout);
-        _logPanel.Controls.Add(container);
-        return _logPanel;
+        strip.Items.Add(_statusSummary);
+        strip.Items.Add(_statusSpacer);
+        strip.Items.Add(_versionLabel);
+        return strip;
     }
 
-    private void ToggleWorkLog()
+    private void ShowWorkLog()
     {
-        _logVisible = !_logVisible;
-        _logPanel.Visible = _logVisible;
-        if (_root != null) _root.RowStyles[6].Height = _logVisible ? 220 : 0;
-        _toggleLog.Text = _logVisible ? "HIDE WORK LOG ▲" : "SHOW WORK LOG ▼";
-    }
-
-    private void OnLogEntryWritten(LogEntry entry)
-    {
-        if (InvokeRequired)
+        if (_logForm == null || _logForm.IsDisposed)
         {
-            BeginInvoke(new Action<LogEntry>(OnLogEntryWritten), entry);
-            return;
+            _logForm = new LogForm();
+            _logForm.FormClosed += (_, _) => _logForm = null;
         }
 
-        var levelText = entry.Level.ToString().ToUpperInvariant().PadRight(7);
-        var details = string.Empty;
-        if (!string.IsNullOrWhiteSpace(entry.ReservationNumber)) details += $" | #{entry.ReservationNumber}";
-        if (!string.IsNullOrWhiteSpace(entry.GuestName)) details += $" | {entry.GuestName}";
-        var line = $"{entry.Timestamp:HH:mm:ss}  {levelText}  {entry.Message}{details}{Environment.NewLine}";
+        if (!_logForm.Visible)
+            _logForm.Show(this);
 
-        _workLog.SelectionStart = _workLog.TextLength;
-        _workLog.SelectionLength = 0;
-        _workLog.SelectionColor = entry.Level switch
-        {
-            LogLevel.Success => Color.FromArgb(74, 222, 128),
-            LogLevel.Warning => Color.FromArgb(251, 191, 36),
-            LogLevel.Error => Color.FromArgb(248, 113, 113),
-            _ => Color.FromArgb(147, 197, 253)
-        };
-        _workLog.AppendText(line);
-        _workLog.SelectionColor = _workLog.ForeColor;
-        _workLog.SelectionStart = _workLog.TextLength;
-        _workLog.ScrollToCaret();
+        if (_logForm.WindowState == FormWindowState.Minimized)
+            _logForm.WindowState = FormWindowState.Normal;
 
-        var match = Regex.Match(entry.Message, @"Matching\s+(\d+)\s+of\s+(\d+)", RegexOptions.IgnoreCase);
-        if (match.Success && int.TryParse(match.Groups[1].Value, out var current) && int.TryParse(match.Groups[2].Value, out var total) && total > 0)
-        {
-            _logProgress.Value = Math.Clamp((int)Math.Round(current * 100d / total), 0, 100);
-            _logStatus.Text = $"Matching {current} of {total} ({_logProgress.Value}%)";
-        }
-        else if (entry.Level == LogLevel.Error)
-        {
-            _logStatus.Text = "Stopped with an error";
-        }
-        else if (entry.Message.StartsWith("Engine completed", StringComparison.OrdinalIgnoreCase))
-        {
-            _logProgress.Value = 100;
-            _logStatus.Text = "Completed (100%)";
-        }
-        else if (entry.Message.Contains("Reading", StringComparison.OrdinalIgnoreCase) || entry.Message.Contains("Starting", StringComparison.OrdinalIgnoreCase))
-        {
-            _logStatus.Text = entry.Message;
-        }
+        _logForm.BringToFront();
+        _logForm.Activate();
     }
 
     private void ConfigureGrid()
@@ -467,11 +356,8 @@ public sealed class MainForm : Form
             return;
         }
 
-        if (!_logVisible) ToggleWorkLog();
         Logger.Clear();
-        _workLog.Clear();
-        _logProgress.Value = 0;
-        _logStatus.Text = "Starting...";
+        _logForm?.ResetForNewRun();
         Logger.Info("Booking.com reconciliation started.");
         Logger.Info($"Booking.com file: {Path.GetFileName(_bookingPath.Text)}");
         Logger.Info($"Opera file: {Path.GetFileName(_operaPath.Text)}");
@@ -503,12 +389,14 @@ public sealed class MainForm : Form
             ApplyFilter();
             _export.Enabled = true;
             _status.Text = $"Completed successfully — {_bookingCount} Booking.com records and {_operaCount} Opera records processed.";
+            _statusSummary.Text = $"Ready | Booking.com: {_bookingCount:N0} | Opera: {_operaCount:N0} | Results: {_results.Count:N0} | Last run: {DateTime.Now:HH:mm}";
             Logger.Success($"{_results.Count} result rows created.");
             Logger.Success($"Summary: {_results.Count(r => r.Result == "Perfect Match")} perfect, {_results.Count(r => r.Result == "Missing in Opera")} missing in Opera, {_results.Count(r => r.Result == "Date Mismatch")} date mismatches, {_results.Count(r => r.Result == "Split Reservation")} split stays.");
         }
         catch (Exception ex)
         {
             _status.Text = "Reconciliation failed.";
+            _statusSummary.Text = $"Error | Last run: {DateTime.Now:HH:mm}";
             Logger.Error(ex.Message);
             Logger.Error(ex.StackTrace ?? "No technical stack trace was available.");
             MessageBox.Show(this, ex.Message, "Reconciliation error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -534,6 +422,7 @@ public sealed class MainForm : Form
         {
             await Task.Run(() => ExcelExporter.Save(save.FileName, _results, _bookingCount, _operaCount));
             _status.Text = $"Report saved: {save.FileName}";
+            _statusSummary.Text = $"Report exported | {DateTime.Now:HH:mm}";
             var open = MessageBox.Show(this, "Reconciliation report created successfully. Open it now?", "Export completed", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
             if (open == DialogResult.Yes)
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(save.FileName) { UseShellExecute = true });
@@ -554,7 +443,15 @@ public sealed class MainForm : Form
         _export.Enabled = !busy && _results.Count > 0;
         _progress.Visible = busy;
         UseWaitCursor = busy;
-        if (!string.IsNullOrWhiteSpace(message)) _status.Text = message;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            _status.Text = message;
+            _statusSummary.Text = message;
+        }
+        else if (!busy && _results.Count == 0)
+        {
+            _statusSummary.Text = "Ready";
+        }
     }
 
     private void AddEmptyCards() => UpdateCards(0, 0, Array.Empty<ResultRecord>());
