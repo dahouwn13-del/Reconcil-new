@@ -390,6 +390,7 @@ public sealed class MainForm : Form
         AddCard("All", "Opera PMS", operaCount, Color.FromArgb(100, 72, 170));
         AddCard("Perfect Match", "Perfect Match", rows.Count(r => r.Result == "Perfect Match"), Color.FromArgb(22, 163, 74));
         AddCard("Date Mismatch", "Date Mismatch", rows.Count(r => r.Result == "Date Mismatch"), Color.FromArgb(234, 88, 12));
+        AddCard("Split Reservation", "Split Stays", rows.Count(r => r.Result == "Split Reservation"), Color.FromArgb(2, 132, 199));
         AddCard("Missing in Opera", "Missing in Opera", rows.Count(r => r.Result == "Missing in Opera"), Color.FromArgb(220, 38, 38));
         AddCard("Missing in Booking.com", "Missing in Booking", rows.Count(r => r.Result == "Missing in Booking.com"), Color.FromArgb(153, 27, 27));
         AddCard("Manual Review", "Manual Review", rows.Count(r => r.Result == "Manual Review"), Color.FromArgb(202, 138, 4));
@@ -461,6 +462,7 @@ public sealed class MainForm : Form
             [nameof(ResultRecord.OperaArrival)] = "Opera Arrival",
             [nameof(ResultRecord.OperaDeparture)] = "Opera Departure",
             [nameof(ResultRecord.OperaStatus)] = "Opera Status",
+            [nameof(ResultRecord.OperaRoom)] = "Opera Room",
             [nameof(ResultRecord.MatchScore)] = "Score",
             [nameof(ResultRecord.MatchMethod)] = "Match Method",
             [nameof(ResultRecord.Result)] = "Result",

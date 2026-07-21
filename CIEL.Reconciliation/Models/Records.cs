@@ -33,6 +33,7 @@ public sealed class ResultRecord
     public DateTime? OperaArrival { get; set; }
     public DateTime? OperaDeparture { get; set; }
     public string OperaStatus { get; set; } = "";
+    public string OperaRoom { get; set; } = "";
     public int MatchScore { get; set; }
     public string MatchMethod { get; set; } = "";
     public string Result { get; set; } = "";
