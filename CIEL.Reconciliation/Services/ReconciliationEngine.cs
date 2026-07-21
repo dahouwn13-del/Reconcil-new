@@ -36,7 +36,7 @@ public static class ReconciliationEngine
             var split = FindSplitReservation(b, opera, remaining);
             if (split.Count > 1)
             {
-                foreach (var matchIndex in split) remaining.Remove(matchIndex);
+                foreach (var idx in split) remaining.Remove(idx);
                 var records = split.Select(i => opera[i]).OrderBy(o => o.Arrival).ToList();
                 output.Add(new ResultRecord
                 {

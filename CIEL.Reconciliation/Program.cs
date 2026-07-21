@@ -9,6 +9,6 @@ internal static class Program
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        Application.Run(new HomeForm());
     }
 }

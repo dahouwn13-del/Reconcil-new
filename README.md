@@ -1,21 +1,15 @@
-# CIEL Reconciliation Suite v3.1
+# CIEL Reconciliation v4.0
 
-Native Windows desktop application for reconciling Booking.com Excel exports with Opera Arrivals: Detailed PDFs.
+Windows desktop application with a platform selection screen for:
 
-## Version 3.1 improvements
+- Booking.com reconciliation
+- Expedia reconciliation
 
-- Smarter matching using exact dates plus fuzzy guest-name scoring
-- Split reservation detection for contiguous Opera stays
-- Duplicate Booking.com reservation-number detection
-- Separate name-mismatch classification
-- Opera room number included in the results and Excel export
-- Clickable result cards and search remain available
+## Booking.com
+The existing Booking.com and Opera PMS reconciliation remains fully functional, including smart matching, split-stay detection, Excel export, filters, and multilingual name normalization.
+
+## Expedia
+A separate Expedia interface is included because Expedia reports use a different structure. The Expedia parser will be activated after mapping a real Expedia report against its corresponding Opera Arrivals: Detailed PDF.
 
 ## Build
-
-The GitHub Actions workflow publishes a self-contained Windows executable artifact.
-
-
-## Version 3.1 name transliteration
-
-Booking.com guest names written in Arabic/Persian or Cyrillic are transliterated internally into Latin characters before fuzzy matching against Opera. The original guest name remains unchanged in the screen and Excel export. Transliteration improves matching but should still be manually reviewed when spelling differs significantly.
+The GitHub Actions workflow publishes a self-contained Windows x64 executable and uploads it as the `CIEL-Reconciliation-Windows` artifact.

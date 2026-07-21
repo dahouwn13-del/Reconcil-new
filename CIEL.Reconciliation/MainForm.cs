@@ -52,7 +52,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "CIEL Reconciliation Suite";
+        Text = "CIEL Reconciliation — Booking.com";
         Width = 1450;
         Height = 900;
         StartPosition = FormStartPosition.CenterScreen;
@@ -136,7 +136,7 @@ public sealed class MainForm : Form
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
         panel.Controls.Add(new Label
         {
-            Text = "CIEL RECONCILIATION SUITE",
+            Text = "CIEL RECONCILIATION — BOOKING.COM",
             Dock = DockStyle.Top,
             Height = 42,
             Font = new Font("Segoe UI Semibold", 24, FontStyle.Bold),
