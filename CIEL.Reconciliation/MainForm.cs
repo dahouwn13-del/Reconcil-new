@@ -10,6 +10,20 @@ public sealed class MainForm : Form
     private readonly TextBox _operaPath = CreatePathBox();
     private readonly Button _run = CreatePrimaryButton("RUN RECONCILIATION");
     private readonly Button _export = CreateSecondaryButton("EXPORT TO EXCEL");
+    private readonly Button _toggleLog = CreateSecondaryButton("SHOW WORK LOG ▼");
+    private readonly RichTextBox _workLog = new()
+    {
+        Dock = DockStyle.Fill,
+        ReadOnly = true,
+        BorderStyle = BorderStyle.None,
+        BackColor = Color.FromArgb(15, 23, 42),
+        ForeColor = Color.FromArgb(226, 232, 240),
+        Font = new Font("Consolas", 9),
+        DetectUrls = false
+    };
+    private readonly Panel _logPanel = new() { Dock = DockStyle.Fill, Visible = false };
+    private TableLayoutPanel? _root;
+    private bool _logVisible;
     private readonly Label _status = new()
     {
         Text = "Select the Booking.com Excel file and Opera Arrivals: Detailed PDF.",
@@ -63,31 +77,34 @@ public sealed class MainForm : Form
 
         ConfigureGrid();
 
-        var root = new TableLayoutPanel
+        _root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(28, 22, 28, 24),
-            RowCount = 6,
+            RowCount = 7,
             ColumnCount = 1,
             BackColor = BackColor
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        Controls.Add(root);
+        _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
+        _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
+        _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+        _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+        Controls.Add(_root);
 
-        root.Controls.Add(BuildHeader(), 0, 0);
-        root.Controls.Add(BuildUploadPanel(), 0, 1);
-        root.Controls.Add(_cards, 0, 2);
-        root.Controls.Add(BuildStatusPanel(), 0, 3);
-        root.Controls.Add(BuildSearchPanel(), 0, 4);
-        root.Controls.Add(BuildGridPanel(), 0, 5);
+        _root.Controls.Add(BuildHeader(), 0, 0);
+        _root.Controls.Add(BuildUploadPanel(), 0, 1);
+        _root.Controls.Add(_cards, 0, 2);
+        _root.Controls.Add(BuildStatusPanel(), 0, 3);
+        _root.Controls.Add(BuildSearchPanel(), 0, 4);
+        _root.Controls.Add(BuildGridPanel(), 0, 5);
+        _root.Controls.Add(BuildLogPanel(), 0, 6);
 
         _run.Click += async (_, _) => await RunAsync();
         _export.Click += async (_, _) => await ExportAsync();
+        _toggleLog.Click += (_, _) => ToggleWorkLog();
         _search.TextChanged += (_, _) => ApplyFilter();
         DragEnter += OnDragEnter;
         DragDrop += OnDragDrop;
@@ -202,16 +219,19 @@ public sealed class MainForm : Form
         var actions = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 5,
             RowCount = 1,
             Padding = new Padding(185, 6, 0, 4),
             Margin = new Padding(0)
         };
         actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 18));
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 14));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 14));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
         actions.Controls.Add(_run, 0, 0);
-        actions.Controls.Add(_export, 2, 0);
+        actions.Controls.Add(_toggleLog, 2, 0);
+        actions.Controls.Add(_export, 4, 0);
         table.SetColumnSpan(actions, 3);
         table.Controls.Add(actions, 0, 3);
 
@@ -273,6 +293,79 @@ public sealed class MainForm : Form
         return panel;
     }
 
+
+    private Control BuildLogPanel()
+    {
+        var container = new RoundedPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            CornerRadius = 12,
+            Padding = new Padding(1),
+            Margin = new Padding(0, 8, 0, 0)
+        };
+
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, BackColor = Color.FromArgb(241, 245, 249) };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        header.Controls.Add(new Label
+        {
+            Text = "WORK LOG — LIVE ENGINE ACTIVITY",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 0, 0, 0),
+            Font = new Font("Segoe UI Semibold", 9, FontStyle.Bold),
+            ForeColor = Color.FromArgb(51, 65, 85)
+        }, 0, 0);
+
+        var copy = CreateBrowseButton();
+        copy.Text = "Copy log";
+        copy.Margin = new Padding(4);
+        copy.Click += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(_workLog.Text)) Clipboard.SetText(_workLog.Text);
+        };
+        header.Controls.Add(copy, 1, 0);
+
+        var clear = CreateBrowseButton();
+        clear.Text = "Clear log";
+        clear.Margin = new Padding(4);
+        clear.Click += (_, _) => _workLog.Clear();
+        header.Controls.Add(clear, 2, 0);
+
+        layout.Controls.Add(header, 0, 0);
+        layout.Controls.Add(_workLog, 0, 1);
+        container.Controls.Add(layout);
+        _logPanel.Controls.Add(container);
+        return _logPanel;
+    }
+
+    private void ToggleWorkLog()
+    {
+        _logVisible = !_logVisible;
+        _logPanel.Visible = _logVisible;
+        if (_root != null) _root.RowStyles[6].Height = _logVisible ? 220 : 0;
+        _toggleLog.Text = _logVisible ? "HIDE WORK LOG ▲" : "SHOW WORK LOG ▼";
+    }
+
+    private void AppendLog(string message)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action<string>(AppendLog), message);
+            return;
+        }
+
+        _workLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
+        _workLog.SelectionStart = _workLog.TextLength;
+        _workLog.ScrollToCaret();
+    }
+
     private void ConfigureGrid()
     {
         _grid.EnableHeadersVisualStyles = false;
@@ -310,14 +403,28 @@ public sealed class MainForm : Form
             return;
         }
 
+        if (!_logVisible) ToggleWorkLog();
+        _workLog.Clear();
+        AppendLog("START: Booking.com reconciliation started.");
+        AppendLog($"Booking.com file: {Path.GetFileName(_bookingPath.Text)}");
+        AppendLog($"Opera file: {Path.GetFileName(_operaPath.Text)}");
+
         SetBusy(true, "Reading files and reconciling bookings...");
         try
         {
+            var progress = new Progress<string>(AppendLog);
             var data = await Task.Run(() =>
             {
+                progress.Report("Reading Booking.com Excel file...");
                 var bookings = BookingExcelReader.Read(_bookingPath.Text);
+                progress.Report($"OK: Loaded {bookings.Count} Booking.com records.");
+
+                progress.Report("Reading Opera Arrivals PDF...");
                 var opera = OperaPdfReader.Read(_operaPath.Text);
-                var results = ReconciliationEngine.Run(bookings, opera);
+                progress.Report($"OK: Loaded {opera.Count} Opera records.");
+
+                progress.Report("Starting matching engine...");
+                var results = ReconciliationEngine.Run(bookings, opera, progress.Report);
                 return (bookings, opera, results);
             });
 
@@ -330,10 +437,14 @@ public sealed class MainForm : Form
             ApplyFilter();
             _export.Enabled = true;
             _status.Text = $"Completed successfully — {_bookingCount} Booking.com records and {_operaCount} Opera records processed.";
+            AppendLog($"COMPLETED: {_results.Count} result rows created.");
+            AppendLog($"SUMMARY: {_results.Count(r => r.Result == "Perfect Match")} perfect, {_results.Count(r => r.Result == "Missing in Opera")} missing in Opera, {_results.Count(r => r.Result == "Date Mismatch")} date mismatches, {_results.Count(r => r.Result == "Split Reservation")} split stays.");
         }
         catch (Exception ex)
         {
             _status.Text = "Reconciliation failed.";
+            AppendLog($"ERROR: {ex.Message}");
+            AppendLog(ex.StackTrace ?? "No technical stack trace was available.");
             MessageBox.Show(this, ex.Message, "Reconciliation error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally

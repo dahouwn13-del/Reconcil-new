@@ -13,3 +13,10 @@ A separate Expedia interface is included because Expedia reports use a different
 
 ## Build
 The GitHub Actions workflow publishes a self-contained Windows x64 executable and uploads it as the `CIEL-Reconciliation-Windows` artifact.
+
+
+## Version 4.1 - In-app Work Log
+- Added a SHOW WORK LOG / HIDE WORK LOG button inside the Booking.com screen.
+- The live log displays file-reading stages, each booking being matched, warnings, review items, errors, and a final summary.
+- Added Copy Log and Clear Log controls.
+- Preserved the previous duplicate-variable compile fix.
