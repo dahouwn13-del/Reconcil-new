@@ -1,6 +1,8 @@
 using System.Drawing.Drawing2D;
 using CIEL.Reconciliation.Models;
 using CIEL.Reconciliation.Services;
+using CIEL.Reconciliation.Logging;
+using System.Text.RegularExpressions;
 
 namespace CIEL.Reconciliation;
 
@@ -20,6 +22,22 @@ public sealed class MainForm : Form
         ForeColor = Color.FromArgb(226, 232, 240),
         Font = new Font("Consolas", 9),
         DetectUrls = false
+    };
+    private readonly Label _logStatus = new()
+    {
+        Text = "Ready",
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleLeft,
+        ForeColor = Color.FromArgb(51, 65, 85),
+        Font = new Font("Segoe UI Semibold", 9, FontStyle.Bold)
+    };
+    private readonly ProgressBar _logProgress = new()
+    {
+        Dock = DockStyle.Fill,
+        Minimum = 0,
+        Maximum = 100,
+        Value = 0,
+        Style = ProgressBarStyle.Continuous
     };
     private readonly Panel _logPanel = new() { Dock = DockStyle.Fill, Visible = false };
     private TableLayoutPanel? _root;
@@ -76,6 +94,8 @@ public sealed class MainForm : Form
         AllowDrop = true;
 
         ConfigureGrid();
+        Logger.EntryWritten += OnLogEntryWritten;
+        FormClosed += (_, _) => Logger.EntryWritten -= OnLogEntryWritten;
 
         _root = new TableLayoutPanel
         {
@@ -305,8 +325,9 @@ public sealed class MainForm : Form
             Margin = new Padding(0, 8, 0, 0)
         };
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, BackColor = Color.FromArgb(241, 245, 249) };
@@ -335,11 +356,18 @@ public sealed class MainForm : Form
         var clear = CreateBrowseButton();
         clear.Text = "Clear log";
         clear.Margin = new Padding(4);
-        clear.Click += (_, _) => _workLog.Clear();
+        clear.Click += (_, _) => { Logger.Clear(); _workLog.Clear(); _logProgress.Value = 0; _logStatus.Text = "Ready"; };
         header.Controls.Add(clear, 2, 0);
 
+        var progressRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10, 6, 10, 5), BackColor = Color.White };
+        progressRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 280));
+        progressRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        progressRow.Controls.Add(_logStatus, 0, 0);
+        progressRow.Controls.Add(_logProgress, 1, 0);
+
         layout.Controls.Add(header, 0, 0);
-        layout.Controls.Add(_workLog, 0, 1);
+        layout.Controls.Add(progressRow, 0, 1);
+        layout.Controls.Add(_workLog, 0, 2);
         container.Controls.Add(layout);
         _logPanel.Controls.Add(container);
         return _logPanel;
@@ -353,17 +381,53 @@ public sealed class MainForm : Form
         _toggleLog.Text = _logVisible ? "HIDE WORK LOG ▲" : "SHOW WORK LOG ▼";
     }
 
-    private void AppendLog(string message)
+    private void OnLogEntryWritten(LogEntry entry)
     {
         if (InvokeRequired)
         {
-            BeginInvoke(new Action<string>(AppendLog), message);
+            BeginInvoke(new Action<LogEntry>(OnLogEntryWritten), entry);
             return;
         }
 
-        _workLog.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
+        var levelText = entry.Level.ToString().ToUpperInvariant().PadRight(7);
+        var details = string.Empty;
+        if (!string.IsNullOrWhiteSpace(entry.ReservationNumber)) details += $" | #{entry.ReservationNumber}";
+        if (!string.IsNullOrWhiteSpace(entry.GuestName)) details += $" | {entry.GuestName}";
+        var line = $"{entry.Timestamp:HH:mm:ss}  {levelText}  {entry.Message}{details}{Environment.NewLine}";
+
+        _workLog.SelectionStart = _workLog.TextLength;
+        _workLog.SelectionLength = 0;
+        _workLog.SelectionColor = entry.Level switch
+        {
+            LogLevel.Success => Color.FromArgb(74, 222, 128),
+            LogLevel.Warning => Color.FromArgb(251, 191, 36),
+            LogLevel.Error => Color.FromArgb(248, 113, 113),
+            _ => Color.FromArgb(147, 197, 253)
+        };
+        _workLog.AppendText(line);
+        _workLog.SelectionColor = _workLog.ForeColor;
         _workLog.SelectionStart = _workLog.TextLength;
         _workLog.ScrollToCaret();
+
+        var match = Regex.Match(entry.Message, @"Matching\s+(\d+)\s+of\s+(\d+)", RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var current) && int.TryParse(match.Groups[2].Value, out var total) && total > 0)
+        {
+            _logProgress.Value = Math.Clamp((int)Math.Round(current * 100d / total), 0, 100);
+            _logStatus.Text = $"Matching {current} of {total} ({_logProgress.Value}%)";
+        }
+        else if (entry.Level == LogLevel.Error)
+        {
+            _logStatus.Text = "Stopped with an error";
+        }
+        else if (entry.Message.StartsWith("Engine completed", StringComparison.OrdinalIgnoreCase))
+        {
+            _logProgress.Value = 100;
+            _logStatus.Text = "Completed (100%)";
+        }
+        else if (entry.Message.Contains("Reading", StringComparison.OrdinalIgnoreCase) || entry.Message.Contains("Starting", StringComparison.OrdinalIgnoreCase))
+        {
+            _logStatus.Text = entry.Message;
+        }
     }
 
     private void ConfigureGrid()
@@ -404,27 +468,29 @@ public sealed class MainForm : Form
         }
 
         if (!_logVisible) ToggleWorkLog();
+        Logger.Clear();
         _workLog.Clear();
-        AppendLog("START: Booking.com reconciliation started.");
-        AppendLog($"Booking.com file: {Path.GetFileName(_bookingPath.Text)}");
-        AppendLog($"Opera file: {Path.GetFileName(_operaPath.Text)}");
+        _logProgress.Value = 0;
+        _logStatus.Text = "Starting...";
+        Logger.Info("Booking.com reconciliation started.");
+        Logger.Info($"Booking.com file: {Path.GetFileName(_bookingPath.Text)}");
+        Logger.Info($"Opera file: {Path.GetFileName(_operaPath.Text)}");
 
         SetBusy(true, "Reading files and reconciling bookings...");
         try
         {
-            var progress = new Progress<string>(AppendLog);
             var data = await Task.Run(() =>
             {
-                progress.Report("Reading Booking.com Excel file...");
+                Logger.Info("Reading Booking.com Excel file...");
                 var bookings = BookingExcelReader.Read(_bookingPath.Text);
-                progress.Report($"OK: Loaded {bookings.Count} Booking.com records.");
+                Logger.Success($"Loaded {bookings.Count} Booking.com records.");
 
-                progress.Report("Reading Opera Arrivals PDF...");
+                Logger.Info("Reading Opera Arrivals PDF...");
                 var opera = OperaPdfReader.Read(_operaPath.Text);
-                progress.Report($"OK: Loaded {opera.Count} Opera records.");
+                Logger.Success($"Loaded {opera.Count} Opera records.");
 
-                progress.Report("Starting matching engine...");
-                var results = ReconciliationEngine.Run(bookings, opera, progress.Report);
+                Logger.Info("Starting matching engine...");
+                var results = ReconciliationEngine.Run(bookings, opera);
                 return (bookings, opera, results);
             });
 
@@ -437,14 +503,14 @@ public sealed class MainForm : Form
             ApplyFilter();
             _export.Enabled = true;
             _status.Text = $"Completed successfully — {_bookingCount} Booking.com records and {_operaCount} Opera records processed.";
-            AppendLog($"COMPLETED: {_results.Count} result rows created.");
-            AppendLog($"SUMMARY: {_results.Count(r => r.Result == "Perfect Match")} perfect, {_results.Count(r => r.Result == "Missing in Opera")} missing in Opera, {_results.Count(r => r.Result == "Date Mismatch")} date mismatches, {_results.Count(r => r.Result == "Split Reservation")} split stays.");
+            Logger.Success($"{_results.Count} result rows created.");
+            Logger.Success($"Summary: {_results.Count(r => r.Result == "Perfect Match")} perfect, {_results.Count(r => r.Result == "Missing in Opera")} missing in Opera, {_results.Count(r => r.Result == "Date Mismatch")} date mismatches, {_results.Count(r => r.Result == "Split Reservation")} split stays.");
         }
         catch (Exception ex)
         {
             _status.Text = "Reconciliation failed.";
-            AppendLog($"ERROR: {ex.Message}");
-            AppendLog(ex.StackTrace ?? "No technical stack trace was available.");
+            Logger.Error(ex.Message);
+            Logger.Error(ex.StackTrace ?? "No technical stack trace was available.");
             MessageBox.Show(this, ex.Message, "Reconciliation error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally

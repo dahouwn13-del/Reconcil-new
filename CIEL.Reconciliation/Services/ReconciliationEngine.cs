@@ -1,4 +1,5 @@
 using CIEL.Reconciliation.Models;
+using CIEL.Reconciliation.Logging;
 using FuzzySharp;
 
 namespace CIEL.Reconciliation.Services;
@@ -9,10 +10,9 @@ public static class ReconciliationEngine
 
     public static List<ResultRecord> Run(
         IReadOnlyList<BookingRecord> bookings,
-        IReadOnlyList<OperaRecord> opera,
-        Action<string>? log = null)
+        IReadOnlyList<OperaRecord> opera)
     {
-        log?.Invoke($"Engine started with {bookings.Count} Booking.com records and {opera.Count} Opera records.");
+        Logger.Info($"Engine started with {bookings.Count} Booking.com records and {opera.Count} Opera records.");
         var active = bookings.Where(b => ActiveStatuses.Contains(b.Status)).ToList();
         var excluded = bookings.Where(b => !ActiveStatuses.Contains(b.Status)).ToList();
         var remaining = new HashSet<int>(Enumerable.Range(0, opera.Count));
@@ -29,7 +29,7 @@ public static class ReconciliationEngine
         foreach (var b in active)
         {
             processed++;
-            log?.Invoke($"Matching {processed} of {active.Count}: {b.BookingNumber} | {b.GuestName}");
+            Logger.Info($"Matching {processed} of {active.Count}.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
             if (duplicateBookingNumbers.Contains(b.BookingNumber))
             {
                 var duplicate = NewBookingResult(b);
@@ -37,7 +37,7 @@ public static class ReconciliationEngine
                 duplicate.Reason = "The same Booking.com reservation number appears more than once in the source file.";
                 duplicate.MatchMethod = "Duplicate check";
                 output.Add(duplicate);
-                log?.Invoke($"WARNING: Duplicate Booking.com number detected: {b.BookingNumber}.");
+                Logger.Warning("Duplicate Booking.com number detected.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
                 continue;
             }
 
@@ -46,7 +46,7 @@ public static class ReconciliationEngine
             {
                 foreach (var matchIndex in split) remaining.Remove(matchIndex);
                 var records = split.Select(i => opera[i]).OrderBy(o => o.Arrival).ToList();
-                log?.Invoke($"OK: Split stay found for {b.BookingNumber} using {split.Count} Opera reservations.");
+                Logger.Success($"Split stay found using {split.Count} Opera reservations.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
                 output.Add(new ResultRecord
                 {
                     BookingNumber = b.BookingNumber,
@@ -141,11 +141,11 @@ public static class ReconciliationEngine
             }
             output.Add(rr);
             if (rr.Result == "Perfect Match")
-                log?.Invoke($"OK: Perfect match — {b.BookingNumber} | {b.GuestName}.");
+                Logger.Success("Perfect match.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
             else if (rr.Result == "Missing in Opera")
-                log?.Invoke($"WARNING: Missing in Opera — {b.BookingNumber} | {b.GuestName}.");
+                Logger.Warning("Missing in Opera.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
             else
-                log?.Invoke($"REVIEW: {rr.Result} — {b.BookingNumber} | {b.GuestName}. {rr.Reason}");
+                Logger.Warning($"{rr.Result}: {rr.Reason}", reservationNumber: b.BookingNumber, guestName: b.GuestName);
         }
 
         foreach (var idx in remaining.OrderBy(i => opera[i].Arrival).ThenBy(i => opera[i].GuestName))
@@ -188,7 +188,7 @@ public static class ReconciliationEngine
             ["Perfect Match"] = 8,
             ["Excluded / Cancelled"] = 9
         };
-        log?.Invoke($"Engine completed. Output rows: {output.Count}. Unmatched Opera rows: {remaining.Count}.");
+        Logger.Success($"Engine completed. Output rows: {output.Count}. Unmatched Opera rows: {remaining.Count}.");
         return output.OrderBy(r => order.GetValueOrDefault(r.Result, 99))
             .ThenBy(r => r.BookingArrival ?? r.OperaArrival)
             .ThenBy(r => r.BookingGuest)
