@@ -1,0 +1,29 @@
+CIEL RECONCILIATION SUITE v2.1 - CLEAN GITHUB UPLOAD
+
+This package contains the COMPLETE repository.
+
+Correct repository structure:
+.github/
+  workflows/
+    build-windows-exe.yml
+CIEL.Reconciliation/
+  Models/
+  Services/
+  CIEL.Reconciliation.csproj
+  MainForm.cs
+  Program.cs
+CIEL_Reconciliation_Native.sln
+README.md
+
+Recommended clean restart:
+1. Create a new EMPTY GitHub repository.
+2. Do not add a README, .gitignore, or license.
+3. Extract this ZIP.
+4. Open the extracted folder.
+5. Upload ALL contents inside the folder to the repository root.
+6. Commit with: CIEL Reconciliation v2.1 clean repository
+7. Open Actions and wait for Build CIEL Windows EXE.
+8. Download the newest CIEL-Reconciliation-Windows artifact.
+
+Do not upload the outer extracted folder itself.
+Do not place MainForm.cs or the .csproj at the repository root.
