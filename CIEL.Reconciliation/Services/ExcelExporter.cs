@@ -32,7 +32,7 @@ public static class ExcelExporter
     private static void AddSheet(XLWorkbook wb, string name, IReadOnlyList<ResultRecord> rows)
     {
         var ws = wb.AddWorksheet(name);
-        var headers = new[] { "Booking.com Number", "Booking.com Guest", "Booking.com Arrival", "Booking.com Departure", "Booking.com Status", "Opera Conf No.", "Opera Guest", "Opera Arrival", "Opera Departure", "Opera Status", "Opera Room", "Match Score", "Match Method", "Result", "Reason" };
+        var headers = new[] { "Booking.com Number", "Booking.com Guest", "Booking.com Arrival", "Booking.com Departure", "Booking.com Status", "Opera Conf No.", "Opera Guest", "Opera Arrival", "Opera Departure", "Opera Status", "Opera Room", "Match Score", "Match Method", "Result", "Reason", "Action Required", "Name Analysis" };
         for (var c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
         for (var r = 0; r < rows.Count; r++)
         {
@@ -43,7 +43,7 @@ public static class ExcelExporter
             ws.Cell(row, 5).Value = x.BookingStatus; ws.Cell(row, 6).Value = x.OperaConf; ws.Cell(row, 7).Value = x.OperaGuest;
             if (x.OperaArrival.HasValue) ws.Cell(row, 8).Value = x.OperaArrival.Value;
             if (x.OperaDeparture.HasValue) ws.Cell(row, 9).Value = x.OperaDeparture.Value;
-            ws.Cell(row, 10).Value = x.OperaStatus; ws.Cell(row, 11).Value = x.OperaRoom; ws.Cell(row, 12).Value = x.MatchScore; ws.Cell(row, 13).Value = x.MatchMethod; ws.Cell(row, 14).Value = x.Result; ws.Cell(row, 15).Value = x.Reason;
+            ws.Cell(row, 10).Value = x.OperaStatus; ws.Cell(row, 11).Value = x.OperaRoom; ws.Cell(row, 12).Value = x.MatchScore; ws.Cell(row, 13).Value = x.MatchMethod; ws.Cell(row, 14).Value = x.Result; ws.Cell(row, 15).Value = x.Reason; ws.Cell(row, 16).Value = x.ActionRequired; ws.Cell(row, 17).Value = x.NameAnalysis;
         }
         var used = ws.RangeUsed();
         if (used is not null)
@@ -55,6 +55,8 @@ public static class ExcelExporter
             ws.SheetView.FreezeRows(1);
             ws.Columns().AdjustToContents(5, 45);
             ws.Column(15).Width = 45;
+            ws.Column(16).Width = 34;
+            ws.Column(17).Width = 55;
         }
     }
 

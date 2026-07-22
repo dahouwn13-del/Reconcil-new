@@ -10,9 +10,9 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>CIEL_Reconciliation</AssemblyName>
-    <Version>5.1.0</Version>
-    <FileVersion>5.1.0.0</FileVersion>
-    <AssemblyVersion>5.1.0.0</AssemblyVersion>
+    <Version>5.2.0</Version>
+    <FileVersion>5.2.0.0</FileVersion>
+    <AssemblyVersion>5.2.0.0</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.104.2" />

@@ -16,7 +16,7 @@ public sealed class MainForm : Form
     private TableLayoutPanel? _root;
     private readonly ToolStripStatusLabel _statusSummary = new("Ready");
     private readonly ToolStripStatusLabel _statusSpacer = new() { Spring = true };
-    private readonly ToolStripStatusLabel _versionLabel = new("Version 5.1.0");
+    private readonly ToolStripStatusLabel _versionLabel = new("Version 5.2.0");
     private readonly Label _status = new()
     {
         Text = "Select the Booking.com Excel file and Opera Arrivals: Detailed PDF.",
@@ -515,7 +515,7 @@ public sealed class MainForm : Form
             query = query.Where(r =>
                 Contains(r.BookingNumber, term) || Contains(r.BookingGuest, term) ||
                 Contains(r.OperaConf, term) || Contains(r.OperaGuest, term) ||
-                Contains(r.Result, term) || Contains(r.Reason, term));
+                Contains(r.Result, term) || Contains(r.Reason, term) || Contains(r.ActionRequired, term) || Contains(r.NameAnalysis, term));
         }
         _grid.DataSource = query.ToList();
     }
@@ -540,14 +540,18 @@ public sealed class MainForm : Form
             [nameof(ResultRecord.MatchScore)] = "Score",
             [nameof(ResultRecord.MatchMethod)] = "Match Method",
             [nameof(ResultRecord.Result)] = "Result",
-            [nameof(ResultRecord.Reason)] = "Reason"
+            [nameof(ResultRecord.Reason)] = "Reason",
+            [nameof(ResultRecord.ActionRequired)] = "Action Required",
+            [nameof(ResultRecord.NameAnalysis)] = "Smart Name Analysis"
         };
         foreach (DataGridViewColumn column in _grid.Columns)
         {
             if (friendly.TryGetValue(column.Name, out var text)) column.HeaderText = text;
             if (column.ValueType == typeof(DateTime?) || column.ValueType == typeof(DateTime)) column.DefaultCellStyle.Format = "dd/MM/yyyy";
         }
-        if (_grid.Columns.Contains(nameof(ResultRecord.Reason))) _grid.Columns[nameof(ResultRecord.Reason)]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        if (_grid.Columns.Contains(nameof(ResultRecord.Reason))) _grid.Columns[nameof(ResultRecord.Reason)]!.Width = 280;
+        if (_grid.Columns.Contains(nameof(ResultRecord.ActionRequired))) _grid.Columns[nameof(ResultRecord.ActionRequired)]!.Width = 220;
+        if (_grid.Columns.Contains(nameof(ResultRecord.NameAnalysis))) _grid.Columns[nameof(ResultRecord.NameAnalysis)]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
     }
 
     private void OnDragEnter(object? sender, DragEventArgs e)

@@ -1,6 +1,5 @@
 using CIEL.Reconciliation.Models;
 using CIEL.Reconciliation.Logging;
-using FuzzySharp;
 
 namespace CIEL.Reconciliation.Services;
 
@@ -26,154 +25,165 @@ public static class ReconciliationEngine
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var processed = 0;
-        foreach (var b in active)
+        foreach (var booking in active)
         {
             processed++;
-            Logger.Info($"Matching {processed} of {active.Count}.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
-            if (duplicateBookingNumbers.Contains(b.BookingNumber))
+            Logger.Info($"Matching {processed} of {active.Count}.", reservationNumber: booking.BookingNumber, guestName: booking.GuestName);
+
+            if (duplicateBookingNumbers.Contains(booking.BookingNumber))
             {
-                var duplicate = NewBookingResult(b);
+                var duplicate = NewBookingResult(booking);
                 duplicate.Result = "Duplicate Booking";
                 duplicate.Reason = "The same Booking.com reservation number appears more than once in the source file.";
+                duplicate.ActionRequired = "Verify duplicate Booking.com reservation";
                 duplicate.MatchMethod = "Duplicate check";
                 output.Add(duplicate);
-                Logger.Warning("Duplicate Booking.com number detected.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
+                Logger.Warning("Duplicate Booking.com number detected.", reservationNumber: booking.BookingNumber, guestName: booking.GuestName);
                 continue;
             }
 
-            var split = FindSplitReservation(b, opera, remaining);
+            var split = FindSplitReservation(booking, opera, remaining);
             if (split.Count > 1)
             {
-                foreach (var matchIndex in split) remaining.Remove(matchIndex);
-                var records = split.Select(i => opera[i]).OrderBy(o => o.Arrival).ToList();
-                Logger.Success($"Split stay found using {split.Count} Opera reservations.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
+                foreach (var matchIndex in split)
+                    remaining.Remove(matchIndex);
+
+                var records = split.Select(index => opera[index]).OrderBy(record => record.Arrival).ToList();
+                var nameMatches = records.Select(record => SmartNameMatcher.Compare(booking, record)).ToList();
+                var bestName = nameMatches.OrderByDescending(match => match.Score).First();
+
                 output.Add(new ResultRecord
                 {
-                    BookingNumber = b.BookingNumber,
-                    BookingGuest = b.GuestName,
-                    BookingArrival = b.Arrival,
-                    BookingDeparture = b.Departure,
-                    BookingStatus = b.Status,
-                    OperaConf = string.Join(" / ", records.Select(o => o.OperaConf).Where(x => !string.IsNullOrWhiteSpace(x))),
-                    OperaGuest = string.Join(" / ", records.Select(o => o.GuestName).Distinct()),
-                    OperaArrival = records.Min(o => o.Arrival),
-                    OperaDeparture = records.Max(o => o.Departure),
-                    OperaStatus = string.Join(" / ", records.Select(o => o.Status).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
-                    OperaRoom = string.Join(" / ", records.Select(o => o.RoomNumber).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct()),
-                    MatchScore = records.Max(o => Fuzz.TokenSortRatio(b.NormalizedName, o.NormalizedName)),
-                    MatchMethod = "Split stay",
+                    BookingNumber = booking.BookingNumber,
+                    BookingGuest = booking.GuestName,
+                    BookingArrival = booking.Arrival,
+                    BookingDeparture = booking.Departure,
+                    BookingStatus = booking.Status,
+                    OperaConf = string.Join(" / ", records.Select(record => record.OperaConf).Where(value => !string.IsNullOrWhiteSpace(value))),
+                    OperaGuest = string.Join(" / ", records.Select(record => record.GuestName).Distinct()),
+                    OperaArrival = records.Min(record => record.Arrival),
+                    OperaDeparture = records.Max(record => record.Departure),
+                    OperaStatus = string.Join(" / ", records.Select(record => record.Status).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct()),
+                    OperaRoom = string.Join(" / ", records.Select(record => record.RoomNumber).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct()),
+                    MatchScore = bestName.Score,
+                    MatchMethod = "Smart name + split stay",
                     Result = "Split Reservation",
-                    Reason = $"The Booking.com stay matches {records.Count} contiguous Opera reservations."
+                    Reason = $"The Booking.com stay matches {records.Count} contiguous Opera reservations.",
+                    ActionRequired = "Verify split reservation",
+                    NameAnalysis = bestName.Explanation
                 });
+
+                Logger.Success($"Split stay found using {split.Count} Opera reservations.", reservationNumber: booking.BookingNumber, guestName: booking.GuestName);
                 continue;
             }
 
-            int? chosen = null;
-            var bestScore = 0;
-            var bestDistance = int.MaxValue;
-            var method = "";
+            int? chosenIndex = null;
+            SmartNameMatchResult? chosenNameMatch = null;
+            var bestCandidateRank = int.MinValue;
 
-            foreach (var i in remaining)
+            foreach (var operaIndex in remaining)
             {
-                var o = opera[i];
-                var score = NameScore(b, o);
-                var distance = DateDistance(b, o);
-                var datesExact = b.Arrival == o.Arrival && b.Departure == o.Departure;
+                var operaRecord = opera[operaIndex];
+                var nameMatch = SmartNameMatcher.Compare(booking, operaRecord);
+                var datesExact = booking.Arrival == operaRecord.Arrival && booking.Departure == operaRecord.Departure;
+                var nextDayArrival = IsNextDayArrival(booking, operaRecord);
+                var dateDistance = DateDistance(booking, operaRecord);
 
-                // Exact dates are a strong signal, but still require a credible name match.
-                if (datesExact && score >= 60)
-                {
-                    if (chosen is null || score > bestScore)
-                    {
-                        chosen = i;
-                        bestScore = score;
-                        bestDistance = 0;
-                        method = score >= 90 ? "Exact stay and guest" : "Exact stay, similar guest";
-                    }
+                var eligible = datesExact
+                    ? nameMatch.Score >= 60
+                    : nextDayArrival
+                        ? nameMatch.Score >= 82
+                        : nameMatch.Score >= 80 && dateDistance <= 4;
+
+                if (!eligible)
                     continue;
-                }
 
-                // For non-exact dates, avoid matching unrelated guests solely by fuzzy name.
-                if (score >= 78 && distance <= 4 &&
-                    (chosen is null || score > bestScore || (score == bestScore && distance < bestDistance)))
-                {
-                    chosen = i;
-                    bestScore = score;
-                    bestDistance = distance;
-                    method = b.NormalizedName == o.NormalizedName ? "Exact guest name" : "Similar guest name";
-                }
+                var dateBonus = datesExact ? 35 : nextDayArrival ? 30 : Math.Max(0, 18 - (dateDistance * 4));
+                var candidateRank = nameMatch.Score + dateBonus;
+                if (candidateRank <= bestCandidateRank)
+                    continue;
+
+                chosenIndex = operaIndex;
+                chosenNameMatch = nameMatch;
+                bestCandidateRank = candidateRank;
             }
 
-            var rr = NewBookingResult(b);
-            rr.MatchScore = bestScore;
-            rr.MatchMethod = method;
-            if (chosen is int idx)
+            var result = NewBookingResult(booking);
+            if (chosenIndex is int selectedIndex && chosenNameMatch is not null)
             {
-                var o = opera[idx];
-                remaining.Remove(idx);
-                CopyOpera(rr, o);
-                var arrOk = b.Arrival == o.Arrival;
-                var depOk = b.Departure == o.Departure;
+                var operaRecord = opera[selectedIndex];
+                remaining.Remove(selectedIndex);
+                CopyOpera(result, operaRecord);
+                result.MatchScore = chosenNameMatch.Score;
+                result.MatchMethod = chosenNameMatch.Method;
+                result.NameAnalysis = chosenNameMatch.Explanation;
 
-                if (arrOk && depOk && bestScore >= 88)
+                var arrivalMatches = booking.Arrival == operaRecord.Arrival;
+                var departureMatches = booking.Departure == operaRecord.Departure;
+                var nextDayArrival = IsNextDayArrival(booking, operaRecord);
+
+                if (nextDayArrival && chosenNameMatch.Score >= 82)
                 {
-                    rr.Result = "Perfect Match";
-                    rr.Reason = "Guest name and stay dates match.";
+                    result.Result = "Perfect Match";
+                    result.MatchMethod = $"{chosenNameMatch.Method} + next-day arrival";
+                    result.Reason = "Guest name and departure date match; the guest arrived one day after the Booking.com arrival date.";
+                    result.ActionRequired = "Check if No-Show was charged";
                 }
-                else if (arrOk && depOk)
+                else if (arrivalMatches && departureMatches && chosenNameMatch.Score >= 88)
                 {
-                    rr.Result = "Name Mismatch";
-                    rr.Reason = "Stay dates match exactly, but the guest names require review.";
+                    result.Result = "Perfect Match";
+                    result.Reason = "Guest name and stay dates match.";
+                    result.ActionRequired = "None";
                 }
-                else if (!arrOk || !depOk)
+                else if (arrivalMatches && departureMatches)
                 {
-                    rr.Result = "Date Mismatch";
-                    var parts = new List<string>();
-                    if (!arrOk) parts.Add("arrival date differs");
-                    if (!depOk) parts.Add("departure date differs");
-                    rr.Reason = char.ToUpper(parts[0][0]) + string.Join("; ", parts)[1..] + ".";
+                    result.Result = "Name Mismatch";
+                    result.Reason = "Stay dates match exactly, but the guest names require review.";
+                    result.ActionRequired = "Verify guest name";
                 }
                 else
                 {
-                    rr.Result = "Manual Review";
-                    rr.Reason = "A possible match was found, but it requires manual verification.";
+                    result.Result = "Date Mismatch";
+                    var differences = new List<string>();
+                    if (!arrivalMatches) differences.Add("arrival date differs");
+                    if (!departureMatches) differences.Add("departure date differs");
+                    result.Reason = Capitalize(string.Join("; ", differences)) + ".";
+                    result.ActionRequired = "Verify stay dates";
                 }
             }
-            output.Add(rr);
-            if (rr.Result == "Perfect Match")
-                Logger.Success("Perfect match.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
-            else if (rr.Result == "Missing in Opera")
-                Logger.Warning("Missing in Opera.", reservationNumber: b.BookingNumber, guestName: b.GuestName);
-            else
-                Logger.Warning($"{rr.Result}: {rr.Reason}", reservationNumber: b.BookingNumber, guestName: b.GuestName);
+
+            output.Add(result);
+            LogResult(result);
         }
 
-        foreach (var idx in remaining.OrderBy(i => opera[i].Arrival).ThenBy(i => opera[i].GuestName))
+        foreach (var operaIndex in remaining.OrderBy(index => opera[index].Arrival).ThenBy(index => opera[index].GuestName))
         {
-            var o = opera[idx];
+            var operaRecord = opera[operaIndex];
             output.Add(new ResultRecord
             {
-                OperaConf = o.OperaConf,
-                OperaGuest = o.GuestName,
-                OperaArrival = o.Arrival,
-                OperaDeparture = o.Departure,
-                OperaStatus = o.Status,
-                OperaRoom = o.RoomNumber,
+                OperaConf = operaRecord.OperaConf,
+                OperaGuest = operaRecord.GuestName,
+                OperaArrival = operaRecord.Arrival,
+                OperaDeparture = operaRecord.Departure,
+                OperaStatus = operaRecord.Status,
+                OperaRoom = operaRecord.RoomNumber,
                 Result = "Missing in Booking.com",
-                Reason = "Opera reservation was not matched to an active Booking.com booking."
+                Reason = "Opera reservation was not matched to an active Booking.com booking.",
+                ActionRequired = "Investigate Opera reservation"
             });
         }
 
-        output.AddRange(excluded.Select(b => new ResultRecord
+        output.AddRange(excluded.Select(booking => new ResultRecord
         {
-            BookingNumber = b.BookingNumber,
-            BookingGuest = b.GuestName,
-            BookingArrival = b.Arrival,
-            BookingDeparture = b.Departure,
-            BookingStatus = b.Status,
+            BookingNumber = booking.BookingNumber,
+            BookingGuest = booking.GuestName,
+            BookingArrival = booking.Arrival,
+            BookingDeparture = booking.Departure,
+            BookingStatus = booking.Status,
             MatchMethod = "Excluded",
             Result = "Excluded / Cancelled",
-            Reason = "Booking.com status is not active, so it is excluded from missing-booking totals."
+            Reason = "Booking.com status is not active, so it is excluded from missing-booking totals.",
+            ActionRequired = "None"
         }));
 
         var order = new Dictionary<string, int>
@@ -188,30 +198,33 @@ public static class ReconciliationEngine
             ["Perfect Match"] = 8,
             ["Excluded / Cancelled"] = 9
         };
+
         Logger.Success($"Engine completed. Output rows: {output.Count}. Unmatched Opera rows: {remaining.Count}.");
-        return output.OrderBy(r => order.GetValueOrDefault(r.Result, 99))
-            .ThenBy(r => r.BookingArrival ?? r.OperaArrival)
-            .ThenBy(r => r.BookingGuest)
+        return output.OrderBy(row => order.GetValueOrDefault(row.Result, 99))
+            .ThenBy(row => row.BookingArrival ?? row.OperaArrival)
+            .ThenBy(row => row.BookingGuest)
             .ToList();
     }
 
-    private static List<int> FindSplitReservation(BookingRecord b, IReadOnlyList<OperaRecord> opera, HashSet<int> remaining)
+    private static List<int> FindSplitReservation(BookingRecord booking, IReadOnlyList<OperaRecord> opera, HashSet<int> remaining)
     {
-        if (!b.Arrival.HasValue || !b.Departure.HasValue || string.IsNullOrWhiteSpace(b.NormalizedName)) return new();
+        if (!booking.Arrival.HasValue || !booking.Departure.HasValue || string.IsNullOrWhiteSpace(booking.NormalizedName))
+            return new List<int>();
 
         var candidates = remaining
-            .Where(i => NameScore(b, opera[i]) >= 85 && opera[i].Arrival.HasValue && opera[i].Departure.HasValue)
-            .OrderBy(i => opera[i].Arrival)
+            .Where(index => SmartNameMatcher.Compare(booking, opera[index]).Score >= 85 && opera[index].Arrival.HasValue && opera[index].Departure.HasValue)
+            .OrderBy(index => opera[index].Arrival)
             .ToList();
 
         for (var start = 0; start < candidates.Count; start++)
         {
             var chain = new List<int> { candidates[start] };
             var first = opera[candidates[start]];
-            if (first.Arrival != b.Arrival) continue;
-            var end = first.Departure;
+            if (first.Arrival != booking.Arrival)
+                continue;
 
-            for (var next = start + 1; next < candidates.Count && end < b.Departure; next++)
+            var end = first.Departure;
+            for (var next = start + 1; next < candidates.Count && end < booking.Departure; next++)
             {
                 var candidate = opera[candidates[next]];
                 if (candidate.Arrival == end)
@@ -221,43 +234,77 @@ public static class ReconciliationEngine
                 }
             }
 
-            if (chain.Count > 1 && end == b.Departure) return chain;
+            if (chain.Count > 1 && end == booking.Departure)
+                return chain;
         }
-        return new();
+
+        return new List<int>();
     }
 
-    private static int NameScore(BookingRecord b, OperaRecord o)
+    private static bool IsNextDayArrival(BookingRecord booking, OperaRecord opera) =>
+        booking.Arrival.HasValue &&
+        opera.Arrival.HasValue &&
+        booking.Departure.HasValue &&
+        opera.Departure.HasValue &&
+        opera.Arrival.Value.Date == booking.Arrival.Value.Date.AddDays(1) &&
+        opera.Departure.Value.Date == booking.Departure.Value.Date;
+
+    private static void CopyOpera(ResultRecord result, OperaRecord opera)
     {
-        if (string.IsNullOrWhiteSpace(b.NormalizedName) || string.IsNullOrWhiteSpace(o.NormalizedName)) return 0;
-        if (b.NormalizedName == o.NormalizedName) return 100;
-        return Math.Max(Fuzz.TokenSortRatio(b.NormalizedName, o.NormalizedName), Fuzz.TokenSetRatio(b.NormalizedName, o.NormalizedName));
+        result.OperaConf = opera.OperaConf;
+        result.OperaGuest = opera.GuestName;
+        result.OperaArrival = opera.Arrival;
+        result.OperaDeparture = opera.Departure;
+        result.OperaStatus = opera.Status;
+        result.OperaRoom = opera.RoomNumber;
     }
 
-    private static void CopyOpera(ResultRecord rr, OperaRecord o)
+    private static ResultRecord NewBookingResult(BookingRecord booking) => new()
     {
-        rr.OperaConf = o.OperaConf;
-        rr.OperaGuest = o.GuestName;
-        rr.OperaArrival = o.Arrival;
-        rr.OperaDeparture = o.Departure;
-        rr.OperaStatus = o.Status;
-        rr.OperaRoom = o.RoomNumber;
-    }
-
-    private static ResultRecord NewBookingResult(BookingRecord b) => new()
-    {
-        BookingNumber = b.BookingNumber,
-        BookingGuest = b.GuestName,
-        BookingArrival = b.Arrival,
-        BookingDeparture = b.Departure,
-        BookingStatus = b.Status,
+        BookingNumber = booking.BookingNumber,
+        BookingGuest = booking.GuestName,
+        BookingArrival = booking.Arrival,
+        BookingDeparture = booking.Departure,
+        BookingStatus = booking.Status,
         Result = "Missing in Opera",
-        Reason = "No sufficiently similar Opera reservation was found."
+        Reason = "No sufficiently similar Opera reservation was found.",
+        ActionRequired = "Investigate reservation"
     };
 
-    private static int DateDistance(BookingRecord b, OperaRecord o)
+    private static int DateDistance(BookingRecord booking, OperaRecord opera)
     {
-        var a = b.Arrival.HasValue && o.Arrival.HasValue ? Math.Abs((b.Arrival.Value - o.Arrival.Value).Days) : 999;
-        var d = b.Departure.HasValue && o.Departure.HasValue ? Math.Abs((b.Departure.Value - o.Departure.Value).Days) : 999;
-        return a + d;
+        var arrivalDistance = booking.Arrival.HasValue && opera.Arrival.HasValue
+            ? Math.Abs((booking.Arrival.Value.Date - opera.Arrival.Value.Date).Days)
+            : 999;
+        var departureDistance = booking.Departure.HasValue && opera.Departure.HasValue
+            ? Math.Abs((booking.Departure.Value.Date - opera.Departure.Value.Date).Days)
+            : 999;
+        return arrivalDistance + departureDistance;
+    }
+
+    private static string Capitalize(string value) =>
+        string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
+
+    private static void LogResult(ResultRecord result)
+    {
+        if (result.Result == "Perfect Match" && result.ActionRequired == "None")
+        {
+            Logger.Success($"Matched. Name score {result.MatchScore}% via {result.MatchMethod}.", reservationNumber: result.BookingNumber, guestName: result.BookingGuest);
+            return;
+        }
+
+        if (result.Result == "Perfect Match")
+        {
+            Logger.Warning($"Matched with action required: {result.ActionRequired}. Name score {result.MatchScore}%.", reservationNumber: result.BookingNumber, guestName: result.BookingGuest);
+            return;
+        }
+
+        if (result.Result == "Missing in Opera")
+        {
+            Logger.Warning("Missing in Opera.", reservationNumber: result.BookingNumber, guestName: result.BookingGuest);
+            return;
+        }
+
+        Logger.Warning($"{result.Result}: {result.Reason} Action: {result.ActionRequired}.", reservationNumber: result.BookingNumber, guestName: result.BookingGuest);
     }
 }

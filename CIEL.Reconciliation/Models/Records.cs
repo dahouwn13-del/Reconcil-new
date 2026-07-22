@@ -38,4 +38,6 @@ public sealed class ResultRecord
     public string MatchMethod { get; set; } = "";
     public string Result { get; set; } = "";
     public string Reason { get; set; } = "";
+    public string ActionRequired { get; set; } = "None";
+    public string NameAnalysis { get; set; } = "";
 }
