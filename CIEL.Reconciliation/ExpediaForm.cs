@@ -16,7 +16,7 @@ public sealed class ExpediaForm : Form
     private TableLayoutPanel? _root;
     private readonly ToolStripStatusLabel _statusSummary = new("Ready");
     private readonly ToolStripStatusLabel _statusSpacer = new() { Spring = true };
-    private readonly ToolStripStatusLabel _versionLabel = new("Version 5.3.2");
+    private readonly ToolStripStatusLabel _versionLabel = new("Version 5.3.4");
     private readonly Label _status = new()
     {
         Text = "Select the Expedia Excel file and Opera Arrivals: Detailed PDF.",
@@ -38,7 +38,7 @@ public sealed class ExpediaForm : Form
         RowHeadersVisible = false,
         SelectionMode = DataGridViewSelectionMode.FullRowSelect,
         MultiSelect = false,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells,
+        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
         ScrollBars = ScrollBars.Both,
         BackgroundColor = Color.White,
         BorderStyle = BorderStyle.None,
@@ -76,7 +76,10 @@ public sealed class ExpediaForm : Form
             Padding = new Padding(28, 22, 28, 24),
             RowCount = 6,
             ColumnCount = 1,
-            BackColor = BackColor
+            BackColor = BackColor,
+            AutoSize = false,
+            AutoScroll = false,
+            GrowStyle = TableLayoutPanelGrowStyle.FixedSize
         };
         _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
@@ -104,6 +107,15 @@ public sealed class ExpediaForm : Form
 
         _export.Enabled = false;
         AddEmptyCards();
+
+        // Re-apply the grid viewport after maximize/restore and DPI-driven resize.
+        Shown += (_, _) => EnsureGridViewport();
+        ResizeEnd += (_, _) => EnsureGridViewport();
+        SizeChanged += (_, _) =>
+        {
+            if (IsHandleCreated && !IsDisposed)
+                BeginInvoke(new Action(EnsureGridViewport));
+        };
     }
 
     private static TextBox CreatePathBox() => new()
@@ -282,7 +294,18 @@ public sealed class ExpediaForm : Form
 
     private Control BuildGridPanel()
     {
-        var panel = new RoundedPanel { Dock = DockStyle.Fill, BackColor = Color.White, CornerRadius = 12, Padding = new Padding(1), Margin = new Padding(0, 4, 0, 0) };
+        // Keep the DataGridView in a non-rounded host. A rounded Region can clip the
+        // native horizontal scrollbar when the form is maximized or DPI scaling changes.
+        var panel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            Padding = Padding.Empty,
+            Margin = new Padding(0, 4, 0, 0),
+            AutoScroll = false,
+            MinimumSize = new Size(0, 150)
+        };
+        _grid.Margin = Padding.Empty;
         panel.Controls.Add(_grid);
         return panel;
     }
@@ -336,6 +359,17 @@ public sealed class ExpediaForm : Form
         _grid.DefaultCellStyle.SelectionForeColor = Color.FromArgb(15, 23, 42);
         _grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(248, 250, 252);
         _grid.DataBindingComplete += (_, _) => FormatGrid();
+    }
+
+    private void EnsureGridViewport()
+    {
+        if (_grid.IsDisposed || !_grid.IsHandleCreated) return;
+
+        _grid.Dock = DockStyle.Fill;
+        _grid.ScrollBars = ScrollBars.Both;
+        _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+        _grid.PerformLayout();
+        _grid.Invalidate();
     }
 
     private void BrowseExpedia()
@@ -526,6 +560,15 @@ public sealed class ExpediaForm : Form
 
     private void FormatGrid()
     {
+        void SetColumnWidth(string columnName, int width)
+        {
+            if (!_grid.Columns.Contains(columnName)) return;
+            var column = _grid.Columns[columnName]!;
+            column.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            column.Width = width;
+            column.MinimumWidth = Math.Min(width, 70);
+        }
+
         var friendly = new Dictionary<string, string>
         {
             [nameof(ExpediaResultRecord.ReservationId)] = "Reservation ID",
@@ -556,6 +599,24 @@ public sealed class ExpediaForm : Form
             if (column.ValueType == typeof(DateTime?) || column.ValueType == typeof(DateTime)) column.DefaultCellStyle.Format = "dd/MM/yyyy";
             if (column.Name == nameof(ExpediaResultRecord.BookingAmount)) column.DefaultCellStyle.Format = "N2";
         }
+        SetColumnWidth(nameof(ExpediaResultRecord.ReservationId), 135);
+        SetColumnWidth(nameof(ExpediaResultRecord.ExpediaConfirmation), 155);
+        SetColumnWidth(nameof(ExpediaResultRecord.ExpediaGuest), 190);
+        SetColumnWidth(nameof(ExpediaResultRecord.ExpediaArrival), 125);
+        SetColumnWidth(nameof(ExpediaResultRecord.ExpediaDeparture), 135);
+        SetColumnWidth(nameof(ExpediaResultRecord.ExpediaStatus), 120);
+        SetColumnWidth(nameof(ExpediaResultRecord.PaymentType), 120);
+        SetColumnWidth(nameof(ExpediaResultRecord.BookingAmount), 130);
+        SetColumnWidth(nameof(ExpediaResultRecord.RoomDescription), 175);
+        SetColumnWidth(nameof(ExpediaResultRecord.OperaConf), 105);
+        SetColumnWidth(nameof(ExpediaResultRecord.OperaGuest), 190);
+        SetColumnWidth(nameof(ExpediaResultRecord.OperaArrival), 120);
+        SetColumnWidth(nameof(ExpediaResultRecord.OperaDeparture), 130);
+        SetColumnWidth(nameof(ExpediaResultRecord.OperaStatus), 110);
+        SetColumnWidth(nameof(ExpediaResultRecord.OperaRoom), 100);
+        SetColumnWidth(nameof(ExpediaResultRecord.MatchScore), 75);
+        SetColumnWidth(nameof(ExpediaResultRecord.MatchMethod), 150);
+        SetColumnWidth(nameof(ExpediaResultRecord.Result), 145);
         if (_grid.Columns.Contains(nameof(ExpediaResultRecord.Reason))) _grid.Columns[nameof(ExpediaResultRecord.Reason)]!.Width = 280;
         if (_grid.Columns.Contains(nameof(ExpediaResultRecord.ActionRequired))) _grid.Columns[nameof(ExpediaResultRecord.ActionRequired)]!.Width = 220;
         if (_grid.Columns.Contains(nameof(ExpediaResultRecord.NameAnalysis)))

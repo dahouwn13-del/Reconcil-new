@@ -22,3 +22,10 @@ Existing Version 5.2 smart matching module remains unchanged.
 - Horizontal and vertical scrollbars are enabled in normal and maximized modes.
 - Smart Name Analysis uses a fixed width in both modules so it cannot suppress horizontal scrolling.
 - Reconciliation and matching logic is unchanged.
+
+## Version 5.3.4
+- Rebuilt the results viewport for both Booking.com and Expedia.
+- The DataGridView now uses a plain docked host so rounded clipping cannot hide its native horizontal scrollbar.
+- Fixed column widths guarantee horizontal navigation for wide reconciliation results.
+- The viewport is refreshed after maximize, restore, resize, and DPI layout changes.
+- No reconciliation or matching logic was changed.
