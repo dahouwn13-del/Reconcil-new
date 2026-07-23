@@ -1,4 +1,4 @@
-using System.Drawing.Drawing2D;
+﻿using System.Drawing.Drawing2D;
 using CIEL.Reconciliation.Models;
 using CIEL.Reconciliation.Services;
 using CIEL.Reconciliation.Logging;
@@ -39,6 +39,7 @@ public sealed class MainForm : Form
         SelectionMode = DataGridViewSelectionMode.FullRowSelect,
         MultiSelect = false,
         AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells,
+        ScrollBars = ScrollBars.Both,
         BackgroundColor = Color.White,
         BorderStyle = BorderStyle.None,
         GridColor = Color.FromArgb(226, 232, 240)
@@ -551,7 +552,13 @@ public sealed class MainForm : Form
         }
         if (_grid.Columns.Contains(nameof(ResultRecord.Reason))) _grid.Columns[nameof(ResultRecord.Reason)]!.Width = 280;
         if (_grid.Columns.Contains(nameof(ResultRecord.ActionRequired))) _grid.Columns[nameof(ResultRecord.ActionRequired)]!.Width = 220;
-        if (_grid.Columns.Contains(nameof(ResultRecord.NameAnalysis))) _grid.Columns[nameof(ResultRecord.NameAnalysis)]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        if (_grid.Columns.Contains(nameof(ResultRecord.NameAnalysis)))
+        {
+            var nameAnalysisColumn = _grid.Columns[nameof(ResultRecord.NameAnalysis)]!;
+            nameAnalysisColumn.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            nameAnalysisColumn.Width = 340;
+            nameAnalysisColumn.MinimumWidth = 220;
+        }
     }
 
     private void OnDragEnter(object? sender, DragEventArgs e)

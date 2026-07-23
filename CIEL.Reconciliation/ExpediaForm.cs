@@ -16,7 +16,7 @@ public sealed class ExpediaForm : Form
     private TableLayoutPanel? _root;
     private readonly ToolStripStatusLabel _statusSummary = new("Ready");
     private readonly ToolStripStatusLabel _statusSpacer = new() { Spring = true };
-    private readonly ToolStripStatusLabel _versionLabel = new("Version 5.3.0");
+    private readonly ToolStripStatusLabel _versionLabel = new("Version 5.3.2");
     private readonly Label _status = new()
     {
         Text = "Select the Expedia Excel file and Opera Arrivals: Detailed PDF.",
@@ -39,6 +39,7 @@ public sealed class ExpediaForm : Form
         SelectionMode = DataGridViewSelectionMode.FullRowSelect,
         MultiSelect = false,
         AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells,
+        ScrollBars = ScrollBars.Both,
         BackgroundColor = Color.White,
         BorderStyle = BorderStyle.None,
         GridColor = Color.FromArgb(226, 232, 240)
@@ -77,6 +78,7 @@ public sealed class ExpediaForm : Form
             ColumnCount = 1,
             BackColor = BackColor
         };
+        _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
@@ -556,7 +558,13 @@ public sealed class ExpediaForm : Form
         }
         if (_grid.Columns.Contains(nameof(ExpediaResultRecord.Reason))) _grid.Columns[nameof(ExpediaResultRecord.Reason)]!.Width = 280;
         if (_grid.Columns.Contains(nameof(ExpediaResultRecord.ActionRequired))) _grid.Columns[nameof(ExpediaResultRecord.ActionRequired)]!.Width = 220;
-        if (_grid.Columns.Contains(nameof(ExpediaResultRecord.NameAnalysis))) _grid.Columns[nameof(ExpediaResultRecord.NameAnalysis)]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        if (_grid.Columns.Contains(nameof(ExpediaResultRecord.NameAnalysis)))
+        {
+            var nameAnalysisColumn = _grid.Columns[nameof(ExpediaResultRecord.NameAnalysis)]!;
+            nameAnalysisColumn.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            nameAnalysisColumn.Width = 340;
+            nameAnalysisColumn.MinimumWidth = 220;
+        }
     }
 
     private void OnDragEnter(object? sender, DragEventArgs e)
