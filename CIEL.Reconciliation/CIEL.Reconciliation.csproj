@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -10,9 +10,9 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>CIEL_Reconciliation</AssemblyName>
-    <Version>5.3.0</Version>
-    <FileVersion>5.3.0.0</FileVersion>
-    <AssemblyVersion>5.3.0.0</AssemblyVersion>
+    <Version>5.3.1</Version>
+    <FileVersion>5.3.1.0</FileVersion>
+    <AssemblyVersion>5.3.1.0</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.104.2" />

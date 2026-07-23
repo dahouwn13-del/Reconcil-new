@@ -1,4 +1,4 @@
-using System.Drawing.Drawing2D;
+﻿using System.Drawing.Drawing2D;
 using CIEL.Reconciliation.Models;
 using CIEL.Reconciliation.Services;
 using CIEL.Reconciliation.Logging;
@@ -574,38 +574,5 @@ public sealed class ExpediaForm : Form
             if (ext is ".xls" or ".xlsx") _expediaPath.Text = file;
             else if (ext == ".pdf") _operaPath.Text = file;
         }
-    }
-}
-
-internal sealed class RoundedPanel : Panel
-{
-    public int CornerRadius { get; set; } = 12;
-    public Color BorderColor { get; set; } = Color.Transparent;
-    public int BorderWidth { get; set; } = 1;
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
-        using var path = CreateRoundedRectangle(rect, CornerRadius);
-        Region = new Region(path);
-        if (BorderColor != Color.Transparent && BorderWidth > 0)
-        {
-            using var pen = new Pen(BorderColor, BorderWidth);
-            e.Graphics.DrawPath(pen, path);
-        }
-    }
-
-    private static GraphicsPath CreateRoundedRectangle(Rectangle bounds, int radius)
-    {
-        var diameter = Math.Max(2, radius * 2);
-        var path = new GraphicsPath();
-        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
     }
 }
